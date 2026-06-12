@@ -20,7 +20,7 @@ if (!token) {
 }
 
 // ─────────────────────────────
-// CLIENTE DISCORD
+// CLIENTE
 // ─────────────────────────────
 const client = new Client({
     intents: [
@@ -50,17 +50,17 @@ function saveConfig() {
 }
 
 // ─────────────────────────────
-// SANITIZER (EVITA <@...> Y BASURA)
+// LIMPIEZA DE TEXTO
 // ─────────────────────────────
 function cleanText(text) {
     return String(text)
-        .replace(/<@!?&?\d+>/g, '')   // elimina menciones Discord
-        .replace(/[`<>@]/g, '')       // elimina símbolos peligrosos
+        .replace(/<@!?&?\d+>/g, '') // elimina menciones
+        .replace(/[`<>@]/g, '')     // evita basura
         .trim();
 }
 
 // ─────────────────────────────
-// FORMATEO CENTRAL
+// FORMATO CENTRAL
 // ─────────────────────────────
 function formatNick(format, member) {
 
@@ -81,7 +81,7 @@ client.once('ready', () => {
 });
 
 // ─────────────────────────────
-// COMANDOS PREFIX (,)
+// COMANDOS
 // ─────────────────────────────
 client.on('messageCreate', async (message) => {
 
@@ -90,7 +90,7 @@ client.on('messageCreate', async (message) => {
     const prefix = ',';
     if (!message.content.startsWith(prefix)) return;
 
-    const args = message.content.slice(prefix.length).trim().split(' ');
+    const args = message.content.slice(prefix.length).trim().split(/ +/);
     const command = args.shift();
 
     // ─────────────────────────────
@@ -103,13 +103,28 @@ client.on('messageCreate', async (message) => {
         }
 
         const role = message.mentions.roles.first();
-        const format = args.slice(1).join(' ');
 
-        if (!role || !format) {
-            return message.reply('❌ Uso: ,add-role-nickname @rol [VIP] {uname} | {gname}');
+        if (!role) {
+            return message.reply('❌ Debes mencionar un rol válido.');
+        }
+
+        // 🔥 FIX REAL DEL PROBLEMA (IMPORTANTE)
+        const format = message.content
+            .split(' ')
+            .slice(2)
+            .join(' ')
+            .trim();
+
+        if (!format) {
+            return message.reply('❌ Uso: ,add-role-nickname @rol BD {uname} | {gname}');
+        }
+
+        if (!format.includes('{uname}') && !format.includes('{gname}')) {
+            return message.reply('❌ Debes usar {uname} o {gname} en el formato.');
         }
 
         const guildId = message.guild.id;
+
         if (!roleConfigs[guildId]) roleConfigs[guildId] = {};
 
         roleConfigs[guildId][role.id] = format;
@@ -167,7 +182,7 @@ client.on('messageCreate', async (message) => {
 });
 
 // ─────────────────────────────
-// CAMBIO DE ROLES → NICKNAME
+// UPDATE POR ROLES
 // ─────────────────────────────
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
@@ -192,7 +207,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
                 await newMember.setNickname(newNick);
                 console.log(`🏷️ Nick cambiado a ${newNick}`);
             } catch (err) {
-                console.error('❌ Error cambiando nick:', err);
+                console.error(err);
             }
 
             break;
