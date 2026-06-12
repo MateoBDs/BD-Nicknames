@@ -34,10 +34,10 @@ let roleConfigs = {};
 // Cargar configuración persistente
 if (fs.existsSync(CONFIG_PATH)) {
     try {
-        roleConfigs = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
-    } catch (err) {
-        console.error('❌ Error al cargar config.json:', err);
-    }
+    await rest.put(...);
+    console.log("OK");
+} catch (error) {
+    console.error(error);
 }
 
 function saveConfig() {
