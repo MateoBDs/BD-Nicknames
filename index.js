@@ -67,7 +67,20 @@ client.once(Events.ClientReady, async () => {
         const rest = new REST({ version: '10' }).setToken(token);
         try {
             console.log('🔄 Registrando comandos de barra...');
-            await rest.put(Routes.applicationGuildCommands(clientId, interaction.guildId), { body: commands });
+            
+            await rest.put(
+                Routes.applicationCommands(clientId),
+                { body: commands }
+            );
+
+            console.log('✅ Comandos registrados con éxito');
+        } catch (error) {
+            console.error('❌ Error al registrar comandos:', error);
+        }
+    } else {
+        console.warn('⚠️ CLIENT_ID no configurado');
+    }
+});
             console.log('✅ Comandos registrados con éxito');
         } catch (error) {
             console.error('❌ Error al registrar comandos:', error);
