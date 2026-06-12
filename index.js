@@ -35,32 +35,44 @@ const client = new Client({
 // CONFIG
 // ─────────────────────────────
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
+
 let roleConfigs = {};
+let rolePriority = {}; // 🔥 prioridad de roles
 
 if (fs.existsSync(CONFIG_PATH)) {
     try {
-        roleConfigs = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+        const data = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+        roleConfigs = data.roleConfigs || {};
+        rolePriority = data.rolePriority || {};
     } catch (err) {
         console.error('❌ Error cargando config.json:', err);
     }
 }
 
 function saveConfig() {
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(roleConfigs, null, 2));
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify({
+        roleConfigs,
+        rolePriority
+    }, null, 2));
 }
 
 // ─────────────────────────────
-// LIMPIEZA DE TEXTO
+// COOLDOWN ANTI RATE LIMIT
+// ─────────────────────────────
+const cooldown = new Map();
+
+// ─────────────────────────────
+// LIMPIEZA
 // ─────────────────────────────
 function cleanText(text) {
     return String(text)
-        .replace(/<@!?&?\d+>/g, '') // elimina menciones
-        .replace(/[`<>@]/g, '')     // evita basura
+        .replace(/<@!?&?\d+>/g, '')
+        .replace(/[`<>@]/g, '')
         .trim();
 }
 
 // ─────────────────────────────
-// FORMATO CENTRAL
+// FORMATO
 // ─────────────────────────────
 function formatNick(format, member) {
 
@@ -71,6 +83,33 @@ function formatNick(format, member) {
         .replaceAll('{uname}', uname)
         .replaceAll('{gname}', gname)
         .slice(0, 32);
+}
+
+// ─────────────────────────────
+// OBTENER MEJOR ROL (PRIORIDAD)
+// ─────────────────────────────
+function getBestRole(member, guildId) {
+
+    const configs = roleConfigs[guildId];
+    if (!configs) return null;
+
+    let bestRole = null;
+    let bestPriority = -1;
+
+    for (const roleId of Object.keys(configs)) {
+
+        if (member.roles.cache.has(roleId)) {
+
+            const priority = rolePriority[guildId]?.[roleId] ?? 0;
+
+            if (priority > bestPriority) {
+                bestPriority = priority;
+                bestRole = roleId;
+            }
+        }
+    }
+
+    return bestRole;
 }
 
 // ─────────────────────────────
@@ -94,7 +133,7 @@ client.on('messageCreate', async (message) => {
     const command = args.shift();
 
     // ─────────────────────────────
-    // ADD ROLE NICKNAME
+    // ADD ROLE FORMAT
     // ─────────────────────────────
     if (command === 'add-role-nickname') {
 
@@ -108,7 +147,6 @@ client.on('messageCreate', async (message) => {
             return message.reply('❌ Debes mencionar un rol válido.');
         }
 
-        // 🔥 FIX REAL DEL PROBLEMA (IMPORTANTE)
         const format = message.content
             .split(' ')
             .slice(2)
@@ -119,22 +157,25 @@ client.on('messageCreate', async (message) => {
             return message.reply('❌ Uso: ,add-role-nickname @rol BD {uname} | {gname}');
         }
 
-        if (!format.includes('{uname}') && !format.includes('{gname}')) {
-            return message.reply('❌ Debes usar {uname} o {gname} en el formato.');
-        }
-
         const guildId = message.guild.id;
 
         if (!roleConfigs[guildId]) roleConfigs[guildId] = {};
+        if (!rolePriority[guildId]) rolePriority[guildId] = {};
 
         roleConfigs[guildId][role.id] = format;
+
+        // prioridad automática (si no existe)
+        if (!rolePriority[guildId][role.id]) {
+            rolePriority[guildId][role.id] = Object.keys(roleConfigs[guildId]).length;
+        }
+
         saveConfig();
 
         return message.reply(`✅ Guardado para ${role.name}: ${format}`);
     }
 
     // ─────────────────────────────
-    // REFRESH NICKNAMES
+    // REFRESH
     // ─────────────────────────────
     if (command === 'refresh-nicknames') {
 
@@ -145,7 +186,7 @@ client.on('messageCreate', async (message) => {
         const guildId = message.guild.id;
 
         if (!roleConfigs[guildId]) {
-            return message.reply('❌ No hay configuraciones guardadas.');
+            return message.reply('❌ No hay configuraciones.');
         }
 
         await message.reply('⏳ Actualizando nicknames...');
@@ -158,22 +199,25 @@ client.on('messageCreate', async (message) => {
 
             if (member.user.bot || !member.manageable) continue;
 
-            for (const roleId of Object.keys(roleConfigs[guildId])) {
+            const roleId = getBestRole(member, guildId);
+            if (!roleId) continue;
 
-                if (member.roles.cache.has(roleId)) {
+            const format = roleConfigs[guildId][roleId];
+            const newNick = formatNick(format, member);
 
-                    const format = roleConfigs[guildId][roleId];
-                    const newNick = formatNick(format, member);
+            // 🔥 evita rate limit
+            const last = cooldown.get(member.id) || 0;
+            if (Date.now() - last < 3000) continue;
 
-                    try {
-                        await member.setNickname(newNick);
-                        updated++;
-                    } catch (err) {
-                        console.error(err);
-                    }
+            try {
+                if (member.nickname === newNick) continue; // 🔥 evita cambios inútiles
 
-                    break;
-                }
+                await member.setNickname(newNick);
+                cooldown.set(member.id, Date.now());
+                updated++;
+
+            } catch (err) {
+                console.error(err);
             }
         }
 
@@ -182,36 +226,35 @@ client.on('messageCreate', async (message) => {
 });
 
 // ─────────────────────────────
-// UPDATE POR ROLES
+// UPDATE ROLES
 // ─────────────────────────────
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
     const guildId = newMember.guild.id;
     if (!roleConfigs[guildId]) return;
 
-    const addedRoles = newMember.roles.cache.filter(
-        role => !oldMember.roles.cache.has(role.id)
-    );
+    const roleId = getBestRole(newMember, guildId);
+    if (!roleId) return;
 
-    if (!addedRoles.size) return;
+    const format = roleConfigs[guildId][roleId];
+    const newNick = formatNick(format, newMember);
 
-    for (const [roleId] of addedRoles) {
+    if (!newMember.manageable) return;
 
-        const format = roleConfigs[guildId][roleId];
+    // 🔥 anti rate limit
+    const last = cooldown.get(newMember.id) || 0;
+    if (Date.now() - last < 3000) return;
 
-        if (format && newMember.manageable) {
+    try {
+        if (newMember.nickname === newNick) return; // 🔥 evita spam
 
-            const newNick = formatNick(format, newMember);
+        await newMember.setNickname(newNick);
+        cooldown.set(newMember.id, Date.now());
 
-            try {
-                await newMember.setNickname(newNick);
-                console.log(`🏷️ Nick cambiado a ${newNick}`);
-            } catch (err) {
-                console.error(err);
-            }
+        console.log(`🏷️ Nick actualizado: ${newNick}`);
 
-            break;
-        }
+    } catch (err) {
+        console.error(err);
     }
 });
 
