@@ -50,12 +50,26 @@ function saveConfig() {
 }
 
 // ─────────────────────────────
-// FUNCIÓN FORMATO (IMPORTANTE)
+// SANITIZER (EVITA <@...> Y BASURA)
+// ─────────────────────────────
+function cleanText(text) {
+    return String(text)
+        .replace(/<@!?&?\d+>/g, '')   // elimina menciones Discord
+        .replace(/[`<>@]/g, '')       // elimina símbolos peligrosos
+        .trim();
+}
+
+// ─────────────────────────────
+// FORMATEO CENTRAL
 // ─────────────────────────────
 function formatNick(format, member) {
+
+    const uname = cleanText(member.user.username);
+    const gname = cleanText(member.guild.name);
+
     return format
-        .replaceAll('{uname}', member.user.username)
-        .replaceAll('{gname}', member.guild.name)
+        .replaceAll('{uname}', uname)
+        .replaceAll('{gname}', gname)
         .slice(0, 32);
 }
 
@@ -153,7 +167,7 @@ client.on('messageCreate', async (message) => {
 });
 
 // ─────────────────────────────
-// CAMBIO DE ROLES → CAMBIO NICK
+// CAMBIO DE ROLES → NICKNAME
 // ─────────────────────────────
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
