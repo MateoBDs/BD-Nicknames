@@ -25,9 +25,7 @@ if (!token) {
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.GuildMembers
     ]
 });
 
@@ -45,7 +43,7 @@ if (fs.existsSync(CONFIG_PATH)) {
         roleConfigs = data.roleConfigs || {};
         rolePriority = data.rolePriority || {};
     } catch (err) {
-        console.error('❌ Error cargando config.json:', err);
+        console.error('❌ Error config.json:', err);
     }
 }
 
@@ -57,7 +55,7 @@ function saveConfig() {
 }
 
 // ─────────────────────────────
-// COOLDOWN ANTI SPAM
+// ANTI SPAM COOLDOWN
 // ─────────────────────────────
 const cooldown = new Map();
 
@@ -79,15 +77,17 @@ function formatNick(format, member) {
     const uname = cleanText(member.user.username);
     const gname = cleanText(member.guild.name);
 
-    return format
+    let result = format
         .replaceAll('{uname}', uname)
         .replaceAll('{gname}', gname)
         .replace(/\s+/g, ' ')
-        .slice(0, 32);
+        .trim();
+
+    return result.length > 32 ? result.slice(0, 32) : result;
 }
 
 // ─────────────────────────────
-// GET BEST ROLE (FIX DEFINITIVO)
+// GET BEST ROLE
 // ─────────────────────────────
 function getBestRole(member, guildId) {
 
@@ -95,7 +95,7 @@ function getBestRole(member, guildId) {
     if (!configs) return null;
 
     let bestRole = null;
-    let bestPriority = -Infinity;
+    let bestPriority = -1;
 
     for (const roleId of Object.keys(configs)) {
 
@@ -120,128 +120,47 @@ client.once('ready', () => {
 });
 
 // ─────────────────────────────
-// COMMANDS
-// ─────────────────────────────
-client.on('messageCreate', async (message) => {
-
-    if (message.author.bot) return;
-
-    const prefix = ',';
-    if (!message.content.startsWith(prefix)) return;
-
-    const args = message.content.slice(prefix.length).trim().split(/ +/);
-    const command = args.shift();
-
-    // ─────────────────────────────
-    // ADD ROLE FORMAT
-    // ─────────────────────────────
-    if (command === 'add-role-nickname') {
-
-        if (!message.member.permissions.has('Administrator')) {
-            return message.reply('❌ No tienes permisos.');
-        }
-
-        const role = message.mentions.roles.first();
-        if (!role) return message.reply('❌ Menciona un rol válido.');
-
-        // prioridad + formato
-        const priority = parseInt(args[0]) || 1;
-
-        const format = message.content
-            .split(' ')
-            .slice(3)
-            .join(' ')
-            .trim();
-
-        if (!format) {
-            return message.reply('❌ Uso: ,add-role-nickname 10 @rol BD {uname} | {gname}');
-        }
-
-        const guildId = message.guild.id;
-
-        if (!roleConfigs[guildId]) roleConfigs[guildId] = {};
-        if (!rolePriority[guildId]) rolePriority[guildId] = {};
-
-        roleConfigs[guildId][role.id] = format;
-        rolePriority[guildId][role.id] = priority;
-
-        saveConfig();
-
-        return message.reply(`✅ Guardado: ${role.name} (prio ${priority})`);
-    }
-
-    // ─────────────────────────────
-    // REFRESH
-    // ─────────────────────────────
-    if (command === 'refresh-nicknames') {
-
-        if (!message.member.permissions.has('Administrator')) {
-            return message.reply('❌ No tienes permisos.');
-        }
-
-        const guildId = message.guild.id;
-        if (!roleConfigs[guildId]) return message.reply('❌ Sin config.');
-
-        await message.reply('⏳ Actualizando...');
-
-        await message.guild.members.fetch();
-
-        let updated = 0;
-
-        for (const member of message.guild.members.cache.values()) {
-
-            if (member.user.bot || !member.manageable) continue;
-
-            const roleId = getBestRole(member, guildId);
-            if (!roleId) continue;
-
-            const format = roleConfigs[guildId][roleId];
-            const newNick = formatNick(format, member);
-
-            const last = cooldown.get(member.id) || 0;
-            if (Date.now() - last < 3000) continue;
-
-            try {
-                if (member.nickname === newNick) continue;
-
-                await member.setNickname(newNick);
-                cooldown.set(member.id, Date.now());
-                updated++;
-
-            } catch (err) {
-                console.error(err);
-            }
-        }
-
-        return message.channel.send(`✅ Updated: ${updated}`);
-    }
-});
-
-// ─────────────────────────────
-// ROLE UPDATE
+// ROLE UPDATE ONLY (AQUÍ ESTÁ TODO EL SISTEMA)
 // ─────────────────────────────
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
     const guildId = newMember.guild.id;
     if (!roleConfigs[guildId]) return;
 
+    const oldRoles = oldMember.roles.cache;
+    const newRoles = newMember.roles.cache;
+
+    const added = newRoles.filter(r => !oldRoles.has(r.id));
+    const removed = oldRoles.filter(r => !newRoles.has(r.id));
+
+    // si no hay cambios de roles → no hacer nada
+    if (!added.size && !removed.size) return;
+
     const roleId = getBestRole(newMember, guildId);
     if (!roleId) return;
 
     const format = roleConfigs[guildId][roleId];
+    if (!format) return;
+
     const newNick = formatNick(format, newMember);
 
+    // anti spam
     const last = cooldown.get(newMember.id) || 0;
     if (Date.now() - last < 3000) return;
 
     try {
+
+        if (!newMember.manageable) return;
+
         if (newMember.nickname === newNick) return;
 
         await newMember.setNickname(newNick);
         cooldown.set(newMember.id, Date.now());
 
+        console.log(`🏷️ Nick actualizado: ${newNick}`);
+
     } catch (err) {
-        console.error(err);
+        console.error('❌ Error nickname:', err);
     }
 });
 
