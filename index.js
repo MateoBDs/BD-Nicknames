@@ -1,11 +1,6 @@
 import {
     Client,
-    GatewayIntentBits,
-    REST,
-    Routes,
-    SlashCommandBuilder,
-    PermissionFlagsBits,
-    Events
+    GatewayIntentBits
 } from 'discord.js';
 
 import fs from 'fs';
@@ -15,18 +10,12 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // ─────────────────────────────
-// VARIABLES DE ENTORNO
+// TOKEN
 // ─────────────────────────────
 const token = process.env.DISCORD_TOKEN;
-const clientId = process.env.CLIENT_ID;
 
 if (!token) {
     console.error('❌ DISCORD_TOKEN no configurado');
-    process.exit(1);
-}
-
-if (!clientId) {
-    console.error('❌ CLIENT_ID no configurado');
     process.exit(1);
 }
 
@@ -36,12 +25,14 @@ if (!clientId) {
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
     ]
 });
 
 // ─────────────────────────────
-// CONFIGURACIÓN PERSISTENTE
+// CONFIG
 // ─────────────────────────────
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
 let roleConfigs = {};
@@ -50,7 +41,7 @@ if (fs.existsSync(CONFIG_PATH)) {
     try {
         roleConfigs = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
     } catch (err) {
-        console.error('❌ Error al cargar config.json:', err);
+        console.error('❌ Error cargando config.json:', err);
     }
 }
 
@@ -59,79 +50,52 @@ function saveConfig() {
 }
 
 // ─────────────────────────────
-// SLASH COMMANDS
+// READY
 // ─────────────────────────────
-const commands = [
-    new SlashCommandBuilder()
-        .setName('add-role-nickname')
-        .setDescription('Configura un prefijo de apodo para un rol')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addRoleOption(option =>
-            option.setName('rol')
-                .setDescription('Rol a configurar')
-                .setRequired(true))
-        .addStringOption(option =>
-            option.setName('formato')
-                .setDescription('Ej: [VIP] {uname}')
-                .setRequired(true))
-].map(cmd => cmd.toJSON());
-
-// ─────────────────────────────
-// READY EVENT (REGISTRO COMANDOS)
-// ─────────────────────────────
-client.once(Events.ClientReady, async () => {
+client.once('ready', () => {
     console.log(`✅ Bot listo como ${client.user.tag}`);
-
-    console.log("CLIENT_ID:", clientId);
-    console.log("TOKEN OK:", !!token);
-    console.log("COMMANDS:", commands);
-
-    const rest = new REST({ version: '10' }).setToken(token);
-
-    try {
-        console.log('🔄 Registrando comandos de barra...');
-
-        const result = await rest.put(
-            Routes.applicationCommands(clientId),
-            { body: commands }
-        );
-
-        console.log('📦 Respuesta Discord:', result);
-        console.log('✅ Comandos registrados con éxito');
-
-    } catch (error) {
-        console.error('❌ Error al registrar comandos:');
-        console.error(error);
-    }
 });
 
 // ─────────────────────────────
-// INTERACCIONES (SLASH COMMAND)
+// COMANDO PREFIJO ( , )
 // ─────────────────────────────
-client.on(Events.InteractionCreate, async interaction => {
-    if (!interaction.isChatInputCommand()) return;
+client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
 
-    if (interaction.commandName === 'add-role-nickname') {
-        const role = interaction.options.getRole('rol');
-        const format = interaction.options.getString('formato');
+    const prefix = ','; // 👈 PREFIJO CAMBIADO A COMA
+    if (!message.content.startsWith(prefix)) return;
 
-        const guildId = interaction.guildId;
+    const args = message.content.slice(prefix.length).trim().split(' ');
+    const command = args.shift();
+
+    if (command === 'add-role-nickname') {
+
+        if (!message.member.permissions.has('Administrator')) {
+            return message.reply('❌ No tienes permisos.');
+        }
+
+        const role = message.mentions.roles.first();
+        const format = args.slice(1).join(' ');
+
+        if (!role || !format) {
+            return message.reply('❌ Uso: ,add-role-nickname @rol [VIP] {uname}');
+        }
+
+        const guildId = message.guild.id;
         if (!roleConfigs[guildId]) roleConfigs[guildId] = {};
 
         roleConfigs[guildId][role.id] = format;
         saveConfig();
 
-        await interaction.reply({
-            content: `✅ Configuración guardada para **${role.name}** → \`${format}\``,
-            ephemeral: true
-        });
+        return message.reply(`✅ Guardado para ${role.name}: ${format}`);
     }
 });
 
 // ─────────────────────────────
-// CAMBIO DE APODO POR ROLES
+// CAMBIO DE NICKNAME
 // ─────────────────────────────
-client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+
     const guildId = newMember.guild.id;
     if (!roleConfigs[guildId]) return;
 
@@ -145,12 +109,12 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
         const format = roleConfigs[guildId][roleId];
 
         if (format) {
-            const newNickname = format.replace('{uname}', newMember.user.username);
+            const newNick = format.replace('{uname}', newMember.user.username);
 
             try {
                 if (newMember.manageable) {
-                    await newMember.setNickname(newNickname.slice(0, 32));
-                    console.log(`🏷️ Nick cambiado: ${newMember.user.tag}`);
+                    await newMember.setNickname(newNick.slice(0, 32));
+                    console.log(`🏷️ Nick cambiado a ${newNick}`);
                 }
             } catch (err) {
                 console.error('❌ Error cambiando nick:', err);
@@ -161,7 +125,4 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     }
 });
 
-// ─────────────────────────────
-// LOGIN BOT
-// ─────────────────────────────
 client.login(token);
