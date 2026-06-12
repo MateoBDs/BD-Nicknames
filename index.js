@@ -78,10 +78,9 @@ function formatNick(format, member) {
 
     const uname = cleanText(member.user.username);
 
-    // 🔥 GLOBAL NAME REAL DEL USUARIO
-    const gname = cleanText(member.displayName);
+    // 🔥 GLOBAL NAME REAL (CORRECTO)
+    const gname = cleanText(member.user.globalName ?? member.user.username);
 
-    // opcional server name
     const server = cleanText(member.guild.name);
 
     let result = format
@@ -200,6 +199,8 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     if (!roleId) return;
 
     const format = roleConfigs[guildId][roleId];
+    if (!format) return;
+
     const newNick = formatNick(format, newMember);
 
     if (!newMember.manageable) return;
