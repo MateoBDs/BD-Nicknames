@@ -34,10 +34,15 @@ let roleConfigs = {};
 // Cargar configuración persistente
 if (fs.existsSync(CONFIG_PATH)) {
     try {
-    await rest.put(...);
-    console.log("OK");
+    await rest.put(
+        Routes.applicationCommands(clientId),
+        { body: commands }
+    );
+
+    console.log('✅ Comandos registrados con éxito');
+
 } catch (error) {
-    console.error(error);
+    console.error('❌ Error:', error);
 }
 
 function saveConfig() {
