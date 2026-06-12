@@ -50,6 +50,16 @@ function saveConfig() {
 }
 
 // ─────────────────────────────
+// FUNCIÓN FORMATO (IMPORTANTE)
+// ─────────────────────────────
+function formatNick(format, member) {
+    return format
+        .replaceAll('{uname}', member.user.username)
+        .replaceAll('{gname}', member.guild.name)
+        .slice(0, 32);
+}
+
+// ─────────────────────────────
 // READY
 // ─────────────────────────────
 client.once('ready', () => {
@@ -61,12 +71,9 @@ client.once('ready', () => {
 // ─────────────────────────────
 client.on('messageCreate', async (message) => {
 
-    console.log("MENSAJE:", message.content);
-
     if (message.author.bot) return;
 
     const prefix = ',';
-
     if (!message.content.startsWith(prefix)) return;
 
     const args = message.content.slice(prefix.length).trim().split(' ');
@@ -85,7 +92,7 @@ client.on('messageCreate', async (message) => {
         const format = args.slice(1).join(' ');
 
         if (!role || !format) {
-            return message.reply('❌ Uso: ,add-role-nickname @rol [VIP] {uname}');
+            return message.reply('❌ Uso: ,add-role-nickname @rol [VIP] {uname} | {gname}');
         }
 
         const guildId = message.guild.id;
@@ -120,18 +127,17 @@ client.on('messageCreate', async (message) => {
 
         for (const member of message.guild.members.cache.values()) {
 
-            if (member.user.bot) continue;
-            if (!member.manageable) continue;
+            if (member.user.bot || !member.manageable) continue;
 
             for (const roleId of Object.keys(roleConfigs[guildId])) {
 
                 if (member.roles.cache.has(roleId)) {
 
                     const format = roleConfigs[guildId][roleId];
-                    const newNick = format.replace('{uname}', member.user.username);
+                    const newNick = formatNick(format, member);
 
                     try {
-                        await member.setNickname(newNick.slice(0, 32));
+                        await member.setNickname(newNick);
                         updated++;
                     } catch (err) {
                         console.error(err);
@@ -164,15 +170,13 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
         const format = roleConfigs[guildId][roleId];
 
-        if (format) {
+        if (format && newMember.manageable) {
 
-            const newNick = format.replace('{uname}', newMember.user.username);
+            const newNick = formatNick(format, newMember);
 
             try {
-                if (newMember.manageable) {
-                    await newMember.setNickname(newNick.slice(0, 32));
-                    console.log(`🏷️ Nick cambiado a ${newNick}`);
-                }
+                await newMember.setNickname(newNick);
+                console.log(`🏷️ Nick cambiado a ${newNick}`);
             } catch (err) {
                 console.error('❌ Error cambiando nick:', err);
             }
@@ -182,4 +186,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     }
 });
 
+// ─────────────────────────────
+// LOGIN
+// ─────────────────────────────
 client.login(token);
