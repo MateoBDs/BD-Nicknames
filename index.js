@@ -60,6 +60,8 @@ client.once('ready', () => {
 // COMANDO PREFIJO ( , )
 // ─────────────────────────────
 client.on('messageCreate', async (message) => {
+    console.log(message.content);
+
     if (message.author.bot) return;
 
     const prefix = ','; // 👈 PREFIJO CAMBIADO A COMA
