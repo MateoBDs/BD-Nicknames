@@ -57,7 +57,7 @@ function saveConfig() {
 }
 
 // ─────────────────────────────
-// COOLDOWN ANTI SPAM
+// COOLDOWN
 // ─────────────────────────────
 const cooldown = new Map();
 
@@ -89,7 +89,7 @@ function formatNick(format, member) {
 }
 
 // ─────────────────────────────
-// GET BEST ROLE (PRIORIDAD)
+// GET BEST ROLE
 // ─────────────────────────────
 function getBestRole(member, guildId) {
 
@@ -173,18 +173,20 @@ client.on('messageCreate', async (message) => {
 });
 
 // ─────────────────────────────
-// ROLE CHANGE → NICK UPDATE ONLY
+// ROLE CHANGE → UPDATE NICK ONLY
 // ─────────────────────────────
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
     const guildId = newMember.guild.id;
     if (!roleConfigs[guildId]) return;
 
-    const oldRoles = oldMember.roles.cache;
-    const newRoles = newMember.roles.cache;
+    const oldRoles = new Set(oldMember.roles.cache.keys());
+    const newRoles = new Set(newMember.roles.cache.keys());
 
-    const changed = oldRoles.size !== newRoles.size ||
-        oldRoles.some(r => !newRoles.has(r.id));
+    const changed =
+        oldRoles.size !== newRoles.size ||
+        [...oldRoles].some(r => !newRoles.has(r)) ||
+        [...newRoles].some(r => !oldRoles.has(r));
 
     if (!changed) return;
 
@@ -192,6 +194,8 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     if (!roleId) return;
 
     const format = roleConfigs[guildId][roleId];
+    if (!format) return;
+
     const newNick = formatNick(format, newMember);
 
     if (!newMember.manageable) return;
@@ -200,6 +204,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     if (Date.now() - last < 3000) return;
 
     try {
+
         if (newMember.nickname === newNick) return;
 
         await newMember.setNickname(newNick);
