@@ -14,6 +14,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const token = process.env.DISCORD_TOKEN;
+const clientId = process.env.CLIENT_ID;
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
