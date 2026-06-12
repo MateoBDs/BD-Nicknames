@@ -42,14 +42,6 @@ function saveConfig() {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(roleConfigs, null, 2));
 }
 
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildPresences
-    ]
-});
-
 // Registrar comandos
 const commands = [
     new SlashCommandBuilder()
