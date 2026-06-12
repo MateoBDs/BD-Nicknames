@@ -77,11 +77,17 @@ function cleanText(text) {
 function formatNick(format, member) {
 
     const uname = cleanText(member.user.username);
-    const gname = cleanText(member.guild.name);
+
+    // 🔥 GLOBAL NAME REAL DEL USUARIO
+    const gname = cleanText(member.displayName);
+
+    // opcional server name
+    const server = cleanText(member.guild.name);
 
     let result = format
         .replaceAll('{uname}', uname)
         .replaceAll('{gname}', gname)
+        .replaceAll('{server}', server)
         .replace(/\s+/g, ' ')
         .trim();
 
@@ -122,7 +128,7 @@ client.once('ready', () => {
 });
 
 // ─────────────────────────────
-// COMANDOS
+// COMMANDS
 // ─────────────────────────────
 client.on('messageCreate', async (message) => {
 
@@ -173,7 +179,7 @@ client.on('messageCreate', async (message) => {
 });
 
 // ─────────────────────────────
-// ROLE CHANGE → UPDATE NICK ONLY
+// ROLE UPDATE → ONLY ON CHANGE
 // ─────────────────────────────
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
@@ -194,8 +200,6 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     if (!roleId) return;
 
     const format = roleConfigs[guildId][roleId];
-    if (!format) return;
-
     const newNick = formatNick(format, newMember);
 
     if (!newMember.manageable) return;
