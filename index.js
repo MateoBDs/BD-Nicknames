@@ -73,7 +73,7 @@ function cleanText(text) {
 }
 
 // ─────────────────────────────
-// FORMAT
+// FORMAT NICKNAME
 // ─────────────────────────────
 function formatNick(format, member) {
 
@@ -153,6 +153,40 @@ async function applyNickname(member) {
 }
 
 // ─────────────────────────────
+// CHECK DUPLICATE TICKETS
+// ─────────────────────────────
+async function checkDuplicateTickets(guild, channel) {
+
+    const duplicates = guild.channels.cache
+        .filter(c => c.name === channel.name && c.id !== channel.id)
+        .sort((a, b) => b.createdTimestamp - a.createdTimestamp);
+
+    if (duplicates.size === 0) return false;
+
+    const lastCreated = channel; // 🔥 el nuevo (el que se intenta usar)
+
+    try {
+        await lastCreated.send(
+            `⚠️ Se detectó un ticket duplicado.\n` +
+            `🗑️ Este ticket será eliminado en 5 segundos porque ya existe otro igual.`
+        ).catch(() => {});
+
+        setTimeout(async () => {
+            try {
+                await lastCreated.delete();
+            } catch (err) {
+                console.error(err);
+            }
+        }, 5000);
+
+    } catch (err) {
+        console.error(err);
+    }
+
+    return true;
+}
+
+// ─────────────────────────────
 // READY
 // ─────────────────────────────
 client.once('ready', () => {
@@ -174,7 +208,6 @@ client.on('guildCreate', guild => {
 client.on('messageCreate', async (message) => {
 
     if (message.author.bot) return;
-
     if (message.guild?.id !== ALLOWED_GUILD_ID) return;
 
     const prefix = '.';
@@ -222,23 +255,27 @@ client.on('messageCreate', async (message) => {
     }
 
     // ─────────────────────────────
-    // RECLAMAR (TICKETS)
+    // RECLAMAR TICKET
     // ─────────────────────────────
     if (command === 'reclamar') {
 
         const channel = message.channel;
 
-        // Detectar ticket básico por nombre
         if (!channel.name.includes('ticket')) {
-            return message.reply('❌ Este comando solo se usa en tickets.');
+            return message.reply('❌ Esto solo funciona en tickets.');
         }
+
+        const isDuplicate = await checkDuplicateTickets(message.guild, channel);
+
+        if (isDuplicate) return;
 
         try {
             await channel.setTopic(`🟢 Reclamado por ${message.author.tag}`);
-            await message.reply(`🎫 Ticket reclamado por ${message.author}`);
+            await channel.send(`🎫 Ticket reclamado por ${message.author}`);
+
         } catch (err) {
             console.error(err);
-            message.reply('❌ No pude reclamar el ticket.');
+            message.reply('❌ Error al reclamar ticket.');
         }
     }
 });
