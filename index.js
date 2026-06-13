@@ -232,3 +232,4 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 // LOGIN
 // ─────────────────────────────
 client.login(token);
+
