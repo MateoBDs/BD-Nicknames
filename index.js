@@ -94,7 +94,6 @@ function formatNick(format, member) {
 // BEST ROLE
 // ─────────────────────────────
 function getBestRole(member, guildId) {
-
     const configs = roleConfigs[guildId];
     if (!configs) return null;
 
@@ -104,7 +103,7 @@ function getBestRole(member, guildId) {
     for (const roleId of Object.keys(configs)) {
         if (!member.roles.cache.has(roleId)) continue;
 
-        const priority = rolePriority[guildId]?.[roleId] ?? 0;
+        const priority = configs[roleId]; // prioridad guardada en config
 
         if (priority > bestPriority) {
             bestPriority = priority;
