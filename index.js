@@ -6,6 +6,11 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // ─────────────────────────────
+// PRIVADO
+// ─────────────────────────────
+const ALLOWED_GUILD_ID = "1511755312162668815";
+
+// ─────────────────────────────
 // TOKEN
 // ─────────────────────────────
 const token = process.env.DISCORD_TOKEN;
@@ -41,7 +46,7 @@ if (fs.existsSync(CONFIG_PATH)) {
         roleConfigs = data.roleConfigs || {};
         rolePriority = data.rolePriority || {};
     } catch (err) {
-        console.error('❌ Error leyendo config.json:', err);
+        console.error('❌ Error config.json:', err);
     }
 }
 
@@ -68,7 +73,7 @@ function cleanText(text) {
 }
 
 // ─────────────────────────────
-// FORMAT NICKNAME
+// FORMAT
 // ─────────────────────────────
 function formatNick(format, member) {
 
@@ -86,7 +91,7 @@ function formatNick(format, member) {
 }
 
 // ─────────────────────────────
-// BEST ROLE (FIXED + SAFE)
+// BEST ROLE
 // ─────────────────────────────
 function getBestRole(member, guildId) {
 
@@ -102,10 +107,8 @@ function getBestRole(member, guildId) {
 
         if (!member.roles.cache.has(roleId)) continue;
 
-        // 🔥 FORZAR NUMBER REAL SIEMPRE
         const priority = Number(priorities[roleId]);
 
-        // si está mal guardado, ignorar
         if (!Number.isFinite(priority)) continue;
 
         if (priority > bestPriority) {
@@ -123,9 +126,9 @@ function getBestRole(member, guildId) {
 async function applyNickname(member) {
 
     if (member.user.bot) return;
-    if (!member.manageable) return;
 
     const guildId = member.guild.id;
+    if (guildId !== ALLOWED_GUILD_ID) return;
 
     const roleId = getBestRole(member, guildId);
     if (!roleId) return;
@@ -141,6 +144,7 @@ async function applyNickname(member) {
     if (member.nickname === newNick) return;
 
     try {
+        if (!member.manageable) return;
         await member.setNickname(newNick);
         cooldown.set(member.id, Date.now());
     } catch (err) {
@@ -152,7 +156,16 @@ async function applyNickname(member) {
 // READY
 // ─────────────────────────────
 client.once('ready', () => {
-    console.log(`✅ Bot listo como ${client.user.tag}`);
+    console.log(`✅ Bot privado listo como ${client.user.tag}`);
+});
+
+// ─────────────────────────────
+// AUTO LEAVE
+// ─────────────────────────────
+client.on('guildCreate', guild => {
+    if (guild.id !== ALLOWED_GUILD_ID) {
+        guild.leave();
+    }
 });
 
 // ─────────────────────────────
@@ -162,7 +175,9 @@ client.on('messageCreate', async (message) => {
 
     if (message.author.bot) return;
 
-    const prefix = ',';
+    if (message.guild?.id !== ALLOWED_GUILD_ID) return;
+
+    const prefix = '.';
     if (!message.content.startsWith(prefix)) return;
 
     const args = message.content.slice(prefix.length).trim().split(/ +/);
@@ -172,10 +187,6 @@ client.on('messageCreate', async (message) => {
     // ADD ROLE NICKNAME
     // ─────────────────────────────
     if (command === 'add-role-nickname') {
-
-        if (!message.member.permissions.has('Administrator')) {
-            return message.reply('❌ No tienes permisos.');
-        }
 
         const role = message.mentions.roles.first();
         if (!role) return message.reply('❌ Menciona un rol.');
@@ -189,7 +200,7 @@ client.on('messageCreate', async (message) => {
             .trim();
 
         if (!format) {
-            return message.reply('❌ Uso: ,add-role-nickname 100 @rol BD {gname}');
+            return message.reply('❌ Uso: .add-role-nickname 100 @rol BD {gname}');
         }
 
         const guildId = message.guild.id;
@@ -198,26 +209,46 @@ client.on('messageCreate', async (message) => {
         if (!rolePriority[guildId]) rolePriority[guildId] = {};
 
         roleConfigs[guildId][role.id] = format;
-
-        // 🔥 FIX IMPORTANTE: FORZAR NUMBER AQUÍ TAMBIÉN
         rolePriority[guildId][role.id] = Number(priority);
 
         saveConfig();
 
-        await message.reply(`✅ Guardado: ${role.name} (prio ${priority})`);
+        await message.reply(`✅ Guardado: ${role.name}`);
 
         await message.guild.members.fetch();
-
         for (const member of message.guild.members.cache.values()) {
             await applyNickname(member);
+        }
+    }
+
+    // ─────────────────────────────
+    // RECLAMAR (TICKETS)
+    // ─────────────────────────────
+    if (command === 'reclamar') {
+
+        const channel = message.channel;
+
+        // Detectar ticket básico por nombre
+        if (!channel.name.includes('ticket')) {
+            return message.reply('❌ Este comando solo se usa en tickets.');
+        }
+
+        try {
+            await channel.setTopic(`🟢 Reclamado por ${message.author.tag}`);
+            await message.reply(`🎫 Ticket reclamado por ${message.author}`);
+        } catch (err) {
+            console.error(err);
+            message.reply('❌ No pude reclamar el ticket.');
         }
     }
 });
 
 // ─────────────────────────────
-// ROLE UPDATE EVENT
+// ROLE UPDATE
 // ─────────────────────────────
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
+
+    if (newMember.guild.id !== ALLOWED_GUILD_ID) return;
 
     const oldRoles = oldMember.roles.cache;
     const newRoles = newMember.roles.cache;
