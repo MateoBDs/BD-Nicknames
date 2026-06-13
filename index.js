@@ -28,7 +28,7 @@ const client = new Client({
 });
 
 // ─────────────────────────────
-// CONFIG FILE
+// CONFIG
 // ─────────────────────────────
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
 
@@ -41,7 +41,7 @@ if (fs.existsSync(CONFIG_PATH)) {
         roleConfigs = data.roleConfigs || {};
         rolePriority = data.rolePriority || {};
     } catch (err) {
-        console.error('❌ Error leyendo config.json:', err);
+        console.error('❌ Error config.json:', err);
     }
 }
 
@@ -86,7 +86,7 @@ function formatNick(format, member) {
 }
 
 // ─────────────────────────────
-// BEST ROLE
+// BEST ROLE (FIXED)
 // ─────────────────────────────
 function getBestRole(member, guildId) {
 
@@ -102,7 +102,9 @@ function getBestRole(member, guildId) {
 
         if (!member.roles.cache.has(roleId)) continue;
 
-        const priority = priorities[roleId] ?? 1;
+        const priority = Number(priorities[roleId]);
+
+        if (isNaN(priority)) continue;
 
         if (priority > bestPriority) {
             bestPriority = priority;
@@ -156,8 +158,6 @@ client.once('ready', () => {
 // ─────────────────────────────
 client.on('messageCreate', async (message) => {
 
-    console.log("📩 MSG:", message.content); // DEBUG IMPORTANTE
-
     if (message.author.bot) return;
 
     const prefix = ',';
@@ -178,7 +178,7 @@ client.on('messageCreate', async (message) => {
         const role = message.mentions.roles.first();
         if (!role) return message.reply('❌ Menciona un rol.');
 
-        const priority = parseInt(args[0]) || 1;
+        const priority = Number(args[0]) || 1;
 
         const format = message.content
             .split(' ')
@@ -203,6 +203,7 @@ client.on('messageCreate', async (message) => {
         await message.reply(`✅ Guardado: ${role.name} (prio ${priority})`);
 
         await message.guild.members.fetch();
+
         for (const member of message.guild.members.cache.values()) {
             await applyNickname(member);
         }
