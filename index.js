@@ -9,6 +9,7 @@ dotenv.config();
 // PRIVADO
 // ─────────────────────────────
 const ALLOWED_GUILD_ID = "1511755312162668815";
+const REVIEW_CHANNEL_ID = "1515299796414369883";
 
 // ─────────────────────────────
 // TOKEN
@@ -33,7 +34,7 @@ const client = new Client({
 });
 
 // ─────────────────────────────
-// CONFIG
+// CONFIG ROLES
 // ─────────────────────────────
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
 
@@ -58,12 +59,22 @@ function saveConfig() {
 }
 
 // ─────────────────────────────
+// TICKETS SYSTEM
+// ─────────────────────────────
+const activeTickets = new Map();
+const closedTickets = new Set();
+
+function getTicketKey(guildId, userId) {
+    return `${guildId}-${userId}`;
+}
+
+// ─────────────────────────────
 // COOLDOWN
 // ─────────────────────────────
 const cooldown = new Map();
 
 // ─────────────────────────────
-// CLEAN TEXT
+// CLEAN
 // ─────────────────────────────
 function cleanText(text) {
     return String(text)
@@ -73,7 +84,7 @@ function cleanText(text) {
 }
 
 // ─────────────────────────────
-// FORMAT NICKNAME
+// FORMAT NICK
 // ─────────────────────────────
 function formatNick(format, member) {
 
@@ -153,44 +164,10 @@ async function applyNickname(member) {
 }
 
 // ─────────────────────────────
-// CHECK DUPLICATE TICKETS
-// ─────────────────────────────
-async function checkDuplicateTickets(guild, channel) {
-
-    const duplicates = guild.channels.cache
-        .filter(c => c.name === channel.name && c.id !== channel.id)
-        .sort((a, b) => b.createdTimestamp - a.createdTimestamp);
-
-    if (duplicates.size === 0) return false;
-
-    const lastCreated = channel; // 🔥 el nuevo (el que se intenta usar)
-
-    try {
-        await lastCreated.send(
-            `⚠️ Se detectó un ticket duplicado.\n` +
-            `🗑️ Este ticket será eliminado en 5 segundos porque ya existe otro igual.`
-        ).catch(() => {});
-
-        setTimeout(async () => {
-            try {
-                await lastCreated.delete();
-            } catch (err) {
-                console.error(err);
-            }
-        }, 5000);
-
-    } catch (err) {
-        console.error(err);
-    }
-
-    return true;
-}
-
-// ─────────────────────────────
 // READY
 // ─────────────────────────────
 client.once('ready', () => {
-    console.log(`✅ Bot privado listo como ${client.user.tag}`);
+    console.log(`✅ Bot listo como ${client.user.tag}`);
 });
 
 // ─────────────────────────────
@@ -217,7 +194,7 @@ client.on('messageCreate', async (message) => {
     const command = args.shift();
 
     // ─────────────────────────────
-    // ADD ROLE NICKNAME
+    // ROLES
     // ─────────────────────────────
     if (command === 'add-role-nickname') {
 
@@ -232,17 +209,13 @@ client.on('messageCreate', async (message) => {
             .join(' ')
             .trim();
 
-        if (!format) {
-            return message.reply('❌ Uso: .add-role-nickname 100 @rol BD {gname}');
-        }
-
         const guildId = message.guild.id;
 
         if (!roleConfigs[guildId]) roleConfigs[guildId] = {};
         if (!rolePriority[guildId]) rolePriority[guildId] = {};
 
         roleConfigs[guildId][role.id] = format;
-        rolePriority[guildId][role.id] = Number(priority);
+        rolePriority[guildId][role.id] = priority;
 
         saveConfig();
 
@@ -255,7 +228,28 @@ client.on('messageCreate', async (message) => {
     }
 
     // ─────────────────────────────
-    // RECLAMAR TICKET
+    // TICKET CREATE
+    // ─────────────────────────────
+    if (command === 'ticket') {
+
+        const key = getTicketKey(message.guild.id, message.author.id);
+
+        if (activeTickets.has(key)) {
+            return message.reply('❌ Ya tienes un ticket abierto.');
+        }
+
+        const channel = await message.guild.channels.create({
+            name: `ticket-${message.author.username}`,
+            topic: `Ticket de ${message.author.tag}`
+        });
+
+        activeTickets.set(key, channel.id);
+
+        await channel.send(`🎫 Ticket creado por ${message.author}`);
+    }
+
+    // ─────────────────────────────
+    // RECLAMAR
     // ─────────────────────────────
     if (command === 'reclamar') {
 
@@ -265,18 +259,74 @@ client.on('messageCreate', async (message) => {
             return message.reply('❌ Esto solo funciona en tickets.');
         }
 
-        const isDuplicate = await checkDuplicateTickets(message.guild, channel);
+        await channel.setTopic(`🟢 Reclamado por ${message.author.tag}`);
+        await channel.send(`🎫 Reclamado por ${message.author}`);
+    }
 
-        if (isDuplicate) return;
+    // ─────────────────────────────
+    // CERRAR
+    // ─────────────────────────────
+    if (command === 'cerrar') {
 
-        try {
-            await channel.setTopic(`🟢 Reclamado por ${message.author.tag}`);
-            await channel.send(`🎫 Ticket reclamado por ${message.author}`);
+        const key = [...activeTickets.entries()]
+            .find(([k, id]) => id === message.channel.id);
 
-        } catch (err) {
-            console.error(err);
-            message.reply('❌ Error al reclamar ticket.');
+        if (key) {
+            activeTickets.delete(key[0]);
         }
+
+        closedTickets.add(message.author.id);
+
+        await message.reply('🔒 Cerrando ticket...');
+        await message.channel.delete().catch(() => {});
+    }
+
+    // ─────────────────────────────
+    // RESET TICKETS
+    // ─────────────────────────────
+    if (command === 'reset-tickets') {
+
+        if (!message.member.permissions.has('Administrator')) {
+            return message.reply('❌ Sin permisos.');
+        }
+
+        activeTickets.clear();
+        closedTickets.clear();
+
+        message.reply('🧹 Tickets reseteados.');
+    }
+
+    // ─────────────────────────────
+    // REVIEW ⭐
+    // ─────────────────────────────
+    if (command === 'review') {
+
+        const stars = parseInt(args[0]);
+        const comment = args.slice(1).join(' ') || 'Sin comentario';
+
+        if (!stars || stars < 1 || stars > 5) {
+            return message.reply('❌ Usa: .review 1-5 comentario');
+        }
+
+        const channel = message.guild.channels.cache.get(REVIEW_CHANNEL_ID);
+        if (!channel) return message.reply('❌ Canal de reviews no configurado.');
+
+        const starText = '⭐'.repeat(stars);
+
+        const embed = {
+            color: 0xffd700,
+            title: "⭐ Nueva valoración de ticket",
+            fields: [
+                { name: "Usuario", value: message.author.tag, inline: true },
+                { name: "Estrellas", value: starText, inline: true },
+                { name: "Comentario", value: comment }
+            ],
+            timestamp: new Date()
+        };
+
+        channel.send({ embeds: [embed] });
+
+        message.reply('✅ Gracias por tu valoración!');
     }
 });
 
