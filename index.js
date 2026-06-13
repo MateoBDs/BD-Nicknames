@@ -1,8 +1,4 @@
-import {
-    Client,
-    GatewayIntentBits
-} from 'discord.js';
-
+import { Client, GatewayIntentBits } from 'discord.js';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
@@ -62,7 +58,7 @@ function saveConfig() {
 const cooldown = new Map();
 
 // ─────────────────────────────
-// CLEAN
+// CLEAN TEXT
 // ─────────────────────────────
 function cleanText(text) {
     return String(text)
@@ -72,7 +68,7 @@ function cleanText(text) {
 }
 
 // ─────────────────────────────
-// FORMAT
+// FORMAT NICKNAME
 // ─────────────────────────────
 function formatNick(format, member) {
 
@@ -94,16 +90,20 @@ function formatNick(format, member) {
 // BEST ROLE
 // ─────────────────────────────
 function getBestRole(member, guildId) {
+
     const configs = roleConfigs[guildId];
-    if (!configs) return null;
+    const priorities = rolePriority[guildId];
+
+    if (!configs || !priorities) return null;
 
     let bestRole = null;
     let bestPriority = -Infinity;
 
     for (const roleId of Object.keys(configs)) {
+
         if (!member.roles.cache.has(roleId)) continue;
 
-        const priority = configs[roleId]; // prioridad guardada en config
+        const priority = priorities[roleId] ?? 1;
 
         if (priority > bestPriority) {
             bestPriority = priority;
@@ -115,42 +115,33 @@ function getBestRole(member, guildId) {
 }
 
 // ─────────────────────────────
-// FORCE REFRESH (IMPORTANTE)
+// APPLY NICKNAME
 // ─────────────────────────────
-async function refreshGuild(guild) {
+async function applyNickname(member) {
 
-    await guild.members.fetch();
+    const guildId = member.guild.id;
 
-    let updated = 0;
+    const roleId = getBestRole(member, guildId);
+    if (!roleId) return;
 
-    for (const member of guild.members.cache.values()) {
+    const format = roleConfigs[guildId]?.[roleId];
+    if (!format) return;
 
-        if (member.user.bot || !member.manageable) continue;
+    if (!member.manageable) return;
 
-        const roleId = getBestRole(member, guild.id);
-        if (!roleId) continue;
+    const newNick = formatNick(format, member);
 
-        const format = roleConfigs[guild.id][roleId];
-        if (!format) continue;
+    const last = cooldown.get(member.id) || 0;
+    if (Date.now() - last < 3000) return;
 
-        const newNick = formatNick(format, member);
+    if (member.nickname === newNick) return;
 
-        const last = cooldown.get(member.id) || 0;
-        if (Date.now() - last < 3000) continue;
-
-        try {
-            if (member.nickname === newNick) continue;
-
-            await member.setNickname(newNick);
-            cooldown.set(member.id, Date.now());
-            updated++;
-
-        } catch (err) {
-            console.error(err);
-        }
+    try {
+        await member.setNickname(newNick);
+        cooldown.set(member.id, Date.now());
+    } catch (err) {
+        console.error('❌ Nick error:', err);
     }
-
-    console.log(`🔄 Refresh completo: ${updated}`);
 }
 
 // ─────────────────────────────
@@ -161,7 +152,7 @@ client.once('ready', () => {
 });
 
 // ─────────────────────────────
-// COMMANDS
+// MESSAGE COMMANDS
 // ─────────────────────────────
 client.on('messageCreate', async (message) => {
 
@@ -174,7 +165,7 @@ client.on('messageCreate', async (message) => {
     const command = args.shift();
 
     // ─────────────────────────────
-    // ADD ROLE + AUTO REFRESH
+    // ADD ROLE NICKNAME
     // ─────────────────────────────
     if (command === 'add-role-nickname') {
 
@@ -194,7 +185,7 @@ client.on('messageCreate', async (message) => {
             .trim();
 
         if (!format) {
-            return message.reply('❌ Uso: ,add-role-nickname 10 @rol BD {uname} | {gname}');
+            return message.reply('❌ Uso: ,add-role-nickname 10 @rol BD {gname}');
         }
 
         const guildId = message.guild.id;
@@ -209,76 +200,46 @@ client.on('messageCreate', async (message) => {
 
         await message.reply(`✅ Guardado: ${role.name} (prio ${priority})`);
 
-        // 🔥 AUTO REFRESH INMEDIATO
+        // 🔥 refrescar todos
         await refreshGuild(message.guild);
     }
 });
 
 // ─────────────────────────────
-// ROLE UPDATE → REAL TIME
+// REFRESH GUILD
+// ─────────────────────────────
+async function refreshGuild(guild) {
+
+    await guild.members.fetch();
+
+    let updated = 0;
+
+    for (const member of guild.members.cache.values()) {
+
+        if (member.user.bot) continue;
+
+        await applyNickname(member);
+        updated++;
+    }
+
+    console.log(`🔄 Refresh completo: ${updated}`);
+}
+
+// ─────────────────────────────
+// ROLE UPDATE EVENT
 // ─────────────────────────────
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
-    const guildId = newMember.guild.id;
-    if (!roleConfigs[guildId]) return;
-
-    const oldRoles = new Set(oldMember.roles.cache.keys());
-    const newRoles = new Set(newMember.roles.cache.keys());
+    const oldRoles = oldMember.roles.cache;
+    const newRoles = newMember.roles.cache;
 
     const changed =
         oldRoles.size !== newRoles.size ||
-        [...oldRoles].some(r => !newRoles.has(r)) ||
-        [...newRoles].some(r => !oldRoles.has(r));
+        [...oldRoles.keys()].some(r => !newRoles.has(r));
 
     if (!changed) return;
 
-    const roleId = getBestRole(newMember, guildId);
-    if (!roleId) return;
-
-    const format = roleConfigs[guildId][roleId];
-    if (!format) return;
-
-    const newNick = formatNick(format, newMember);
-
-    if (!newMember.manageable) return;
-
-    const last = cooldown.get(newMember.id) || 0;
-    if (Date.now() - last < 3000) return;
-
-    try {
-
-        if (newMember.nickname === newNick) return;
-
-        await newMember.setNickname(newNick);
-        cooldown.set(newMember.id, Date.now());
-
-    } catch (err) {
-        console.error(err);
-    }
-});
-
-// ─────────────────────────────
-// UPDATE 2.0
-// ─────────────────────────────
-client.on('guildMemberUpdate', async (oldMember, newMember) => {
-    if (oldMember.roles.cache.size === newMember.roles.cache.size) return;
-
-    const guildId = newMember.guild.id;
-
-    const bestRoleId = getBestRole(newMember, guildId);
-    if (!bestRoleId) return;
-
-    const config = roleConfigs[guildId]?.[bestRoleId];
-    if (!config?.format) return;
-
-    const role = newMember.guild.roles.cache.get(bestRoleId);
-    if (!role) return;
-
-    const nickname = config.format
-        .replace('{gname}', newMember.user.username)
-        .replace('{role}', role.name);
-
-    newMember.setNickname(nickname).catch(() => {});
+    await applyNickname(newMember);
 });
 
 // ─────────────────────────────
