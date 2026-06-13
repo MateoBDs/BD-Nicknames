@@ -258,6 +258,30 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 });
 
 // ─────────────────────────────
+// UPDATE 2.0
+// ─────────────────────────────
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+    if (oldMember.roles.cache.size === newMember.roles.cache.size) return;
+
+    const guildId = newMember.guild.id;
+
+    const bestRoleId = getBestRole(newMember, guildId);
+    if (!bestRoleId) return;
+
+    const config = roleConfigs[guildId]?.[bestRoleId];
+    if (!config?.format) return;
+
+    const role = newMember.guild.roles.cache.get(bestRoleId);
+    if (!role) return;
+
+    const nickname = config.format
+        .replace('{gname}', newMember.user.username)
+        .replace('{role}', role.name);
+
+    newMember.setNickname(nickname).catch(() => {});
+});
+
+// ─────────────────────────────
 // LOGIN
 // ─────────────────────────────
 client.login(token);
