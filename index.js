@@ -41,7 +41,7 @@ if (fs.existsSync(CONFIG_PATH)) {
         roleConfigs = data.roleConfigs || {};
         rolePriority = data.rolePriority || {};
     } catch (err) {
-        console.error('❌ Error config.json:', err);
+        console.error('❌ Error leyendo config.json:', err);
     }
 }
 
@@ -86,7 +86,7 @@ function formatNick(format, member) {
 }
 
 // ─────────────────────────────
-// BEST ROLE (FIXED)
+// BEST ROLE (FIXED + SAFE)
 // ─────────────────────────────
 function getBestRole(member, guildId) {
 
@@ -102,9 +102,11 @@ function getBestRole(member, guildId) {
 
         if (!member.roles.cache.has(roleId)) continue;
 
+        // 🔥 FORZAR NUMBER REAL SIEMPRE
         const priority = Number(priorities[roleId]);
 
-        if (isNaN(priority)) continue;
+        // si está mal guardado, ignorar
+        if (!Number.isFinite(priority)) continue;
 
         if (priority > bestPriority) {
             bestPriority = priority;
@@ -187,7 +189,7 @@ client.on('messageCreate', async (message) => {
             .trim();
 
         if (!format) {
-            return message.reply('❌ Uso: ,add-role-nickname 10 @rol BD {gname}');
+            return message.reply('❌ Uso: ,add-role-nickname 100 @rol BD {gname}');
         }
 
         const guildId = message.guild.id;
@@ -196,7 +198,9 @@ client.on('messageCreate', async (message) => {
         if (!rolePriority[guildId]) rolePriority[guildId] = {};
 
         roleConfigs[guildId][role.id] = format;
-        rolePriority[guildId][role.id] = priority;
+
+        // 🔥 FIX IMPORTANTE: FORZAR NUMBER AQUÍ TAMBIÉN
+        rolePriority[guildId][role.id] = Number(priority);
 
         saveConfig();
 
@@ -232,4 +236,3 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 // LOGIN
 // ─────────────────────────────
 client.login(token);
-
