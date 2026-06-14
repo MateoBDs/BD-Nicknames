@@ -12,6 +12,7 @@ const ALLOWED_GUILD_IDS = [
     "1511755312162668815",
     "1515342135636004977"
 ];
+
 const REVIEW_CHANNEL_ID = "1515299796414369883";
 
 // ─────────────────────────────
@@ -37,18 +38,16 @@ const client = new Client({
 });
 
 // ─────────────────────────────
-// CONFIG ROLES
+// CONFIG ROLES (SOLO FORMATOS)
 // ─────────────────────────────
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
 
 let roleConfigs = {};
-let rolePriority = {};
 
 if (fs.existsSync(CONFIG_PATH)) {
     try {
         const data = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
         roleConfigs = data.roleConfigs || {};
-        rolePriority = data.rolePriority || {};
     } catch (err) {
         console.error('❌ Error config.json:', err);
     }
@@ -56,8 +55,7 @@ if (fs.existsSync(CONFIG_PATH)) {
 
 function saveConfig() {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify({
-        roleConfigs,
-        rolePriority
+        roleConfigs
     }, null, 2));
 }
 
@@ -65,7 +63,6 @@ function saveConfig() {
 // TICKETS SYSTEM
 // ─────────────────────────────
 const activeTickets = new Map();
-const closedTickets = new Set();
 
 function getTicketKey(guildId, userId) {
     return `${guildId}-${userId}`;
@@ -105,29 +102,22 @@ function formatNick(format, member) {
 }
 
 // ─────────────────────────────
-// BEST ROLE
+// BEST ROLE (POR POSICIÓN REAL)
 // ─────────────────────────────
 function getBestRole(member, guildId) {
 
-    const configs = roleConfigs[guildId];
-    const priorities = rolePriority[guildId];
-
-    if (!configs || !priorities) return null;
-
     let bestRole = null;
-    let bestPriority = -Infinity;
+    let highestPosition = -1;
 
-    for (const roleId of Object.keys(configs)) {
+    for (const role of member.roles.cache.values()) {
 
-        if (!member.roles.cache.has(roleId)) continue;
+        if (role.id === guildId) continue; // @everyone
 
-        const priority = Number(priorities[roleId]);
+        if (!roleConfigs[guildId]?.[role.id]) continue;
 
-        if (!Number.isFinite(priority)) continue;
-
-        if (priority > bestPriority) {
-            bestPriority = priority;
-            bestRole = roleId;
+        if (role.position > highestPosition) {
+            highestPosition = role.position;
+            bestRole = role.id;
         }
     }
 
@@ -140,14 +130,12 @@ function getBestRole(member, guildId) {
 async function applyNickname(member) {
 
     if (member.user.bot) return;
+    if (!ALLOWED_GUILD_IDS.includes(member.guild.id)) return;
 
-    const guildId = member.guild.id;
-   if (!ALLOWED_GUILD_IDS.includes(guildId)) return;
-
-    const roleId = getBestRole(member, guildId);
+    const roleId = getBestRole(member, member.guild.id);
     if (!roleId) return;
 
-    const format = roleConfigs[guildId]?.[roleId];
+    const format = roleConfigs[member.guild.id]?.[roleId];
     if (!format) return;
 
     const last = cooldown.get(member.id) || 0;
@@ -204,30 +192,28 @@ client.on('messageCreate', async (message) => {
         const role = message.mentions.roles.first();
         if (!role) return message.reply('❌ Menciona un rol.');
 
-        const priority = Number(args[0]) || 1;
-
         const format = message.content
             .split(' ')
-            .slice(3)
+            .slice(2)
             .join(' ')
             .trim();
 
         const guildId = message.guild.id;
 
         if (!roleConfigs[guildId]) roleConfigs[guildId] = {};
-        if (!rolePriority[guildId]) rolePriority[guildId] = {};
 
         roleConfigs[guildId][role.id] = format;
-        rolePriority[guildId][role.id] = priority;
 
         saveConfig();
 
         await message.reply(`✅ Guardado: ${role.name}`);
 
-// await message.guild.members.fetch();
-// for (const member of message.guild.members.cache.values()) {
-//     await applyNickname(member);
-// }
+        // opcional: aplicar a todos
+        await message.guild.members.fetch();
+        for (const member of message.guild.members.cache.values()) {
+            await applyNickname(member);
+            await new Promise(r => setTimeout(r, 100));
+        }
     }
 
     // ─────────────────────────────
@@ -250,113 +236,28 @@ client.on('messageCreate', async (message) => {
 
         await channel.send(`🎫 Ticket creado por ${message.author}`);
     }
-
-    // ─────────────────────────────
-    // RECLAMAR
-    // ─────────────────────────────
-    if (command === 'reclamar') {
-
-        const channel = message.channel;
-
-        if (!channel.name.includes('ticket')) {
-            return message.reply('❌ Esto solo funciona en tickets.');
-        }
-
-        await channel.setTopic(`🟢 Reclamado por ${message.author.tag}`);
-        await channel.send(`🎫 Reclamado por ${message.author}`);
-    }
-
-    // ─────────────────────────────
-    // CERRAR
-    // ─────────────────────────────
-    if (command === 'cerrar') {
-
-        const key = [...activeTickets.entries()]
-            .find(([k, id]) => id === message.channel.id);
-
-        if (key) {
-            activeTickets.delete(key[0]);
-        }
-
-        closedTickets.add(message.author.id);
-
-        await message.reply('🔒 Cerrando ticket...');
-        await message.channel.delete().catch(() => {});
-    }
-
-    // ─────────────────────────────
-    // RESET TICKETS
-    // ─────────────────────────────
-    if (command === 'reset-tickets') {
-
-        if (!message.member.permissions.has('Administrator')) {
-            return message.reply('❌ Sin permisos.');
-        }
-
-        activeTickets.clear();
-        closedTickets.clear();
-
-        message.reply('🧹 Tickets reseteados.');
-    }
-
-    // ─────────────────────────────
-    // REVIEW ⭐
-    // ─────────────────────────────
-    if (command === 'review') {
-
-        const stars = parseInt(args[0]);
-        const comment = args.slice(1).join(' ') || 'Sin comentario';
-
-        if (!stars || stars < 1 || stars > 5) {
-            return message.reply('❌ Usa: .review 1-5 comentario');
-        }
-
-        const channel = message.guild.channels.cache.get(REVIEW_CHANNEL_ID);
-        if (!channel) return message.reply('❌ Canal de reviews no configurado.');
-
-        const starText = '⭐'.repeat(stars);
-
-        const embed = {
-            color: 0xffd700,
-            title: "⭐ Nueva valoración de ticket",
-            fields: [
-                { name: "Usuario", value: message.author.tag, inline: true },
-                { name: "Estrellas", value: starText, inline: true },
-                { name: "Comentario", value: comment }
-            ],
-            timestamp: new Date()
-        };
-
-        channel.send({ embeds: [embed] });
-
-        message.reply('✅ Gracias por tu valoración!');
-    }
 });
 
 // ─────────────────────────────
-// ROLE UPDATE
+// ROLE UPDATE (OPTIMIZADO)
 // ─────────────────────────────
-client.on('guildMemberUpdate', async (_, newMember) => {
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
     if (!ALLOWED_GUILD_IDS.includes(newMember.guild.id)) return;
 
+    const oldRoles = oldMember.roles.cache;
+    const newRoles = newMember.roles.cache;
+
+    const changed =
+        oldRoles.size !== newRoles.size ||
+        [...oldRoles.keys()].some(r => !newRoles.has(r)) ||
+        [...newRoles.keys()].some(r => !oldRoles.has(r));
+
+    if (!changed) return;
+
     console.log(`🔄 Roles actualizados en ${newMember.guild.name}`);
 
-    for (const member of newMember.guild.members.cache.values()) {
-
-        await applyNickname(member);
-
-        // Pequeña pausa para evitar rate limits
-        await new Promise(resolve => setTimeout(resolve, 100));
-    }
-});
-// ─────────────────────────────
-// ANTI ERROR
-// ─────────────────────────────
-client.on('error', console.error);
-
-process.on('unhandledRejection', error => {
-    console.error('Unhandled promise rejection:', error);
+    await applyNickname(newMember);
 });
 
 // ─────────────────────────────
