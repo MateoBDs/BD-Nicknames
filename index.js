@@ -336,19 +336,9 @@ client.on('messageCreate', async (message) => {
 // ─────────────────────────────
 // ROLE UPDATE
 // ─────────────────────────────
-client.on('guildMemberUpdate', async (oldMember, newMember) => {
+client.on('guildMemberUpdate', async (_, newMember) => {
 
     if (!ALLOWED_GUILD_IDS.includes(newMember.guild.id)) return;
-
-    const oldRoles = oldMember.roles.cache;
-    const newRoles = newMember.roles.cache;
-
-    const changed =
-        oldRoles.size !== newRoles.size ||
-        [...oldRoles.keys()].some(r => !newRoles.has(r)) ||
-        [...newRoles.keys()].some(r => !oldRoles.has(r));
-
-    if (!changed) return;
 
     console.log(`🔄 Roles actualizados en ${newMember.guild.name}`);
 
