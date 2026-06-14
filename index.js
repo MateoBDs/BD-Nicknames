@@ -142,7 +142,7 @@ async function applyNickname(member) {
     if (member.user.bot) return;
 
     const guildId = member.guild.id;
-    if (guildId !== ALLOWED_GUILD_ID) return;
+   if (!ALLOWED_GUILD_IDS.includes(guildId)) return;
 
     const roleId = getBestRole(member, guildId);
     if (!roleId) return;
@@ -177,7 +177,7 @@ client.once('ready', () => {
 // AUTO LEAVE
 // ─────────────────────────────
 client.on('guildCreate', guild => {
-    if (guild.id !== ALLOWED_GUILD_ID) {
+    if (!ALLOWED_GUILD_IDS.includes(guild.id)) {
         guild.leave();
     }
 });
@@ -188,7 +188,7 @@ client.on('guildCreate', guild => {
 client.on('messageCreate', async (message) => {
 
     if (message.author.bot) return;
-    if (message.guild?.id !== ALLOWED_GUILD_ID) return;
+    if (!ALLOWED_GUILD_IDS.includes(message.guild?.id)) return;
 
     const prefix = '.';
     if (!message.content.startsWith(prefix)) return;
@@ -338,7 +338,7 @@ client.on('messageCreate', async (message) => {
 // ─────────────────────────────
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
-    if (newMember.guild.id !== ALLOWED_GUILD_ID) return;
+   if (!ALLOWED_GUILD_IDS.includes(newMember.guild.id)) return;
 
     const oldRoles = oldMember.roles.cache;
     const newRoles = newMember.roles.cache;
