@@ -338,7 +338,7 @@ client.on('messageCreate', async (message) => {
 // ─────────────────────────────
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
-   if (!ALLOWED_GUILD_IDS.includes(newMember.guild.id)) return;
+    if (!ALLOWED_GUILD_IDS.includes(newMember.guild.id)) return;
 
     const oldRoles = oldMember.roles.cache;
     const newRoles = newMember.roles.cache;
@@ -350,7 +350,15 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
     if (!changed) return;
 
-    await applyNickname(newMember);
+    console.log(`🔄 Roles actualizados en ${newMember.guild.name}`);
+
+    for (const member of newMember.guild.members.cache.values()) {
+
+        await applyNickname(member);
+
+        // Pequeña pausa para evitar rate limits
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
 });
 // ─────────────────────────────
 // ANTI ERROR
