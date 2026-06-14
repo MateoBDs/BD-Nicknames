@@ -224,10 +224,10 @@ client.on('messageCreate', async (message) => {
 
         await message.reply(`✅ Guardado: ${role.name}`);
 
-        await message.guild.members.fetch();
-        for (const member of message.guild.members.cache.values()) {
-            await applyNickname(member);
-        }
+// await message.guild.members.fetch();
+// for (const member of message.guild.members.cache.values()) {
+//     await applyNickname(member);
+// }
     }
 
     // ─────────────────────────────
@@ -351,6 +351,14 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     if (!changed) return;
 
     await applyNickname(newMember);
+});
+// ─────────────────────────────
+// ANTI ERROR
+// ─────────────────────────────
+client.on('error', console.error);
+
+process.on('unhandledRejection', error => {
+    console.error('Unhandled promise rejection:', error);
 });
 
 // ─────────────────────────────
