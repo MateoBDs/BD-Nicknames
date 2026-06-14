@@ -357,7 +357,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
         await applyNickname(member);
 
         // Pequeña pausa para evitar rate limits
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 100));
     }
 });
 // ─────────────────────────────
